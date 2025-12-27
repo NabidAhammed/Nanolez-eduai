@@ -58,9 +58,6 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 **/
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'auto-roadmap-v5';
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-
 const LANGUAGES = ["English", "Spanish", "Hindi", "French", "German", "Bengali", "Portuguese", "Japanese", "Chinese", "Arabic"];
 
 const formatLessonText = (text) => {
@@ -90,6 +87,7 @@ const cleanText = (text) => text?.replace(/[*#_~`]/g, '').trim() || "";
 
 const App = () => {
   const [user, setUser] = useState(null);
+const [nameInput, setNameInput] = useState("");
   const [roadmaps, setRoadmaps] = useState([]);
   const [activeRoadmapId, setActiveRoadmapId] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -98,22 +96,26 @@ const App = () => {
   const LOCAL_USER_KEY = "nano_user";
   const LOCAL_ROADMAPS_KEY = "nano_roadmaps";
 
-const getLocalUser = () => {
-  let user = JSON.parse(localStorage.getItem(LOCAL_USER_KEY));
-  if (!user) {
-    user = {
-      uid: crypto.randomUUID(),
-      createdAt: Date.now()
-    };
-    localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(user));
-  }
+//creating user for the login screen
+
+const createLocalUser = (name) => {
+  const user = {
+    uid: crypto.randomUUID(),
+    name: name.trim(),
+    createdAt: Date.now()
+  };
+  localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(user));
   return user;
 };
 
+const getLocalUser = () => {
+  return JSON.parse(localStorage.getItem(LOCAL_USER_KEY));
+};
 
 
   // Modals
   const [articleModal, setArticleModal] = useState({ isOpen: false, data: null, title: '', isLoading: false });
+  const [isArticleLoading, setIsArticleLoading] = useState(false);
   const [quizModal, setQuizModal] = useState({ isOpen: false, questions: [], isLoading: false, score: null, userAnswers: {}, totalPoints: 10, type: 'weekly', weekName: '' });
   const [certModal, setCertModal] = useState({ isOpen: false, roadmap: null });
 
@@ -142,6 +144,11 @@ const getLocalUser = () => {
 
   throw lastErr || new Error("AI request failed");
 };
+
+useEffect(() => {
+  const existingUser = getLocalUser();
+  if (existingUser) setUser(existingUser);
+}, []);
 
 useEffect(() => {
   const user = getLocalUser();
@@ -227,30 +234,30 @@ const system = `JSON only: {
 
 
   const fetchAIArticle = async (dayData) => {
+
+    if (isArticleLoading) return; // 🚫 prevents spam
+  setIsArticleLoading(true);
+
+  try {
+    const res = await fetch("/.netlify/functions/gemini", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic: day.task })
+    });
+
+    if (!res.ok) throw new Error("Rate limited");
+
+    const data = await res.json();
+    setArticleModal({ isOpen: true, data });
+
+  } catch (err) {
+    setError("Please wait a moment before requesting again.");
+  } finally {
+    setIsArticleLoading(false);
+  }
     setArticleModal({ isOpen: true, data: null, title: dayData.topic, isLoading: true });
     const payload = `Topic: ${dayData.topic}. Goal: ${activeRoadmap.goal}. Language: ${activeRoadmap.articleLanguage}.`;
-    const system = `
-Create a structured educational lesson.
-
-Rules:
-- Recommend EXACTLY ONE YouTube educational video
-- The video must be the best and most relevant
-- Return ONLY valid JSON
-- Do NOT include explanations
-
-JSON format:
-{
-  "content": "Detailed lesson with # Headers and - Bullet points...",
-  "project": "Specific mini-project title/desc",
-  "video": {
-    "title": "Video title",
-    "videoId": "YouTube video ID",
-    "channel": "Channel name"
-  },
-  "keyPoints": ["..."]
-}
-`;
-
+    const system = `Create a structured educational lesson. Use markdown-like formatting with headers (starting with #) and bullet points. JSON only: { "content": "Detailed lesson with # Headers and - Bullet points...", "project": "Specific mini-project title/desc", "videoSearch": "specific search query", "keyPoints": ["..."] }`;
     try {
       const result = await fetchGemini(payload, system);
       const data = JSON.parse(result.candidates[0].content.parts[0].text);
@@ -485,28 +492,64 @@ JSON format:
       )}
 
       {/* DASHBOARD */}
-      {/**!user ? (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-white p-6">
-           <div className="max-w-xs w-full text-center">
-              <div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl text-white"><Target className="w-6 h-6" /></div>
-              <h1 className="text-2xl font-black mb-3 tracking-tighter text-slate-900 leading-none">NanoLez-EduAI</h1>
-              <p className="text-slate-400 text-[11px] mb-8 font-bold uppercase tracking-wider">AI Roadmaps • Lessons • Quizes</p>
-              <button onClick={() => signInAnonymously(auth)} className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-black text-[11px] uppercase tracking-widest hover:scale-[1.02] transition-all shadow-xl flex items-center justify-center gap-2">
-                Launch Environment <ArrowRight className="w-4 h-4" />
-              </button>
-           </div>
-        </div>
-      ) : **/(
+      {!user ? (
+         <div className="min-h-screen flex items-center justify-center bg-white p-6">
+    <div className="max-w-xs w-full text-center">
+
+      <div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center mx-auto mb-6 text-white shadow-xl">
+       <img src="favicon.svg" alt="Logo" className="w-8 h-8" />
+      </div>
+
+      <h1 className="text-2xl font-black mb-2 tracking-tight text-slate-900">
+        NanoLez-EDUAI
+      </h1>
+
+      <p className="text-slate-400 text-[11px] mb-6 font-bold uppercase tracking-wider">
+        AI Roadmaps • Articles • Quizzes
+      </p>
+
+      <input
+        value={nameInput}
+        onChange={(e) => setNameInput(e.target.value)}
+        placeholder="Enter your name"
+        className="w-full px-4 py-3 mb-4 rounded-xl border border-slate-200
+                   text-sm font-semibold focus:outline-none
+                   focus:ring-2 focus:ring-slate-300"
+      />
+
+      <button
+        disabled={!nameInput.trim()}
+        onClick={() => setUser(createLocalUser(nameInput))}
+        className="w-full bg-slate-900 text-white py-3.5 rounded-xl
+                   font-black text-[11px] uppercase tracking-widest
+                   disabled:opacity-40
+                   hover:scale-[1.02] transition-all shadow-xl
+                   flex items-center justify-center gap-2"
+      >
+        Enter Dashboard
+        <ArrowRight className="w-4 h-4" />
+      </button>
+
+    </div>
+  </div>
+      ) : (
         <div className="max-w-6xl mx-auto px-4 pt-6">
           <header className="flex justify-between items-center mb-8">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 bg-slate-900 rounded-xl flex items-center justify-center text-white shadow-lg"><Sparkles className="w-4 h-4" /></div>
+              <div className="w-9 h-9 bg-slate-900 rounded-xl flex items-center justify-center text-white shadow-lg"><img src="/public/favicon.svg" alt="Logo" className="w-4 h-4" /></div>
               <div>
                 <h2 className="text-sm font-black tracking-widest text-slate-900 uppercase leading-none mb-0.5">NanoLez-EduAI</h2>
                 <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Learn anything,track everything</span>
               </div>
             </div>
-            <button onClick={() => signOut(auth)} className="p-2 bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-rose-500 transition-all hover:bg-rose-50"><LogOut className="w-3.5 h-3.5" /></button>
+            <h2 className="text-sm font-bold text-slate-700">
+  Welcome, {user.name}
+</h2>
+
+            <button onClick={() => {
+    localStorage.removeItem("nano_user");
+    setUser(null);
+  }} className="p-2 bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-rose-500 transition-all hover:bg-rose-50"><LogOut className="w-3.5 h-3.5" /></button>
           </header>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -631,8 +674,7 @@ JSON format:
                                 const key = `${month.name}-${week.name}-day-${d.day}`;
                                 const done = activeRoadmap.progress?.[key];
                                 return (
-                                  <div
-  key={d.day}
+                                  <div key={d.day}
   className={`flex items-stretch rounded-xl overflow-hidden group transition-all
     ${done
       ? 'bg-slate-50 border border-slate-100 opacity-75'
@@ -676,20 +718,23 @@ JSON format:
 
   {/* RIGHT: ARTICLE BUTTON */}
   <button
-    onClick={() => fetchAIArticle(d)}
-    className="shrink-0 w-11 flex items-center justify-center border-l border-slate-100
-               bg-slate-50/70 hover:bg-indigo-50 text-indigo-600 transition"
-    title="Read article"
-  >
-    <Newspaper className="w-4 h-4 transition-transform group-hover:scale-110" />
-  </button>
-</div> );
- })}
+  disabled={isArticleLoading}
+  onClick={() => fetchAIArticle(d)}
+  className="shrink-0 w-12 border-l border-slate-100
+             flex items-center justify-center
+             disabled:opacity-40 disabled:cursor-not-allowed
+             hover:bg-indigo-50 transition text-indigo-600 bg-slate-50/50"
+>
+  <Newspaper className="w-3.5 h-3.5" />
+</button>
+
+</div>
+ ); })}
  </div>
                             
-                            {week.weeklyProject && (
-                              <div onClick={() => toggleTask(activeRoadmap.id, `${month.name}-${week.name}-project`)} className={`p-4 rounded-lg border-2 border-dashed flex items-center justify-between cursor-pointer transition-all gap-4 ${activeRoadmap.progress?.[`${month.name}-${week.name}-project`] ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'border-indigo-100 text-indigo-600 bg-indigo-50/30 hover:bg-indigo-50 hover:border-indigo-200'}`}>
-                                <div className="flex items-center gap-3">
+{week.weeklyProject && (
+   <div onClick={() => toggleTask(activeRoadmap.id, `${month.name}-${week.name}-project`)} className={`p-4 rounded-lg border-2 border-dashed flex items-center justify-between cursor-pointer transition-all gap-4 ${activeRoadmap.progress?.[`${month.name}-${week.name}-project`] ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'border-indigo-100 text-indigo-600 bg-indigo-50/30 hover:bg-indigo-50 hover:border-indigo-200'}`}>
+    <div className="flex items-center gap-3">
                                   <Hammer className={`w-4 h-4 ${activeRoadmap.progress?.[`${month.name}-${week.name}-project`] ? 'text-white' : 'text-indigo-400'}`} />
                                   <div>
                                     <p className="text-[7px] font-black uppercase tracking-widest opacity-60">Weekly Sprint Goal</p>
