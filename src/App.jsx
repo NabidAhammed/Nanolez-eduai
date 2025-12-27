@@ -181,7 +181,7 @@ const generateRoadmap = async () => {
   try {
 
 
-    const prompt = `Goal: ${formData.goal}, Duration: ${formData.duration} months. Daily time: ${formData.dailyTime}h.`;
+    const prompt = `Goal: ${formData.goal},Language: ${formData.articleLanguage}, Duration: ${formData.duration} months. Daily time: ${formData.dailyTime}h.`;
 
 const system = `JSON only: {
   "title": "...",
@@ -257,7 +257,16 @@ const system = `JSON only: {
   }
     setArticleModal({ isOpen: true, data: null, title: dayData.topic, isLoading: true });
     const payload = `Topic: ${dayData.topic}. Goal: ${activeRoadmap.goal}. Language: ${activeRoadmap.articleLanguage}.`;
-    const system = `Create a structured educational lesson. Use markdown-like formatting with headers (starting with #) and bullet points. JSON only: { "content": "Detailed lesson with # Headers and - Bullet points...", "project": "Specific mini-project title/desc", "videoSearch": "specific search query", "keyPoints": ["..."] }`;
+    const system = 
+    `Create a structured educational lesson.
+     Use markdown-like formatting with headers and bullet points.
+     JSON only: 
+     { "content": "Detailed lesson with explanations and examples",
+      "project": "Specific mini-project title/desc brief in 20 words", 
+      "article": {
+                  title: "specific article title for further reading", 
+                  url: "https://...."},
+      "keyPoints": ["..."] }`;
     try {
       const result = await fetchGemini(payload, system);
       const data = JSON.parse(result.candidates[0].content.parts[0].text);
@@ -420,10 +429,10 @@ const system = `JSON only: {
 
                       <div className="bg-white p-5 rounded-xl border border-slate-200">
                          <h4 className="text-[9px] font-black text-slate-400 mb-3 uppercase tracking-widest flex items-center gap-1.5"><PlayCircle className="w-3.5 h-3.5" /> Learning Lab</h4>
-                         <a href={`https://www.youtube.com/results?search_query=${encodeURIComponent(articleModal.data.videoSearch || articleModal.title)}`} target="_blank" className="flex items-center justify-between p-3 bg-rose-50/50 rounded-lg hover:bg-rose-50 transition-all border border-rose-100 group">
+                         <a href={articleModal.data.article.url} target="_blank" className="flex items-center justify-between p-3 bg-rose-50/50 rounded-lg hover:bg-rose-50 transition-all border border-rose-100 group">
                             <div className="flex items-center gap-2">
-                              <Youtube className="w-4 h-4 text-rose-600" />
-                              <span className="text-[10px] font-black text-slate-700">Watch Tutorials</span>
+                              <BookOpen className="w-4 h-4 text-blue-600" />
+                              <span className="text-[10px] font-black text-slate-700">Read Article</span>
                             </div>
                             <ExternalLink className="w-3.5 h-3.5 text-rose-400 group-hover:translate-x-0.5 transition-transform" />
                          </a>
