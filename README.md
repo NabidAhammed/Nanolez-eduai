@@ -290,10 +290,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 📞 Contact
 
 **Nabid Ahammed Limon**  
-📧 Email: [Your Email]  
+📧 Email: dynamicnabid@gmail.com 
 🎓 Institution: RUET (Rajshahi University of Engineering & Technology)  
-💼 LinkedIn: [Your LinkedIn]  
-🐙 GitHub: [Your GitHub]
+💼 LinkedIn: https://linkedin.com/in/nalimon  
+🐙 GitHub:  https://github.com/NabidAhammed
 
 ---
 
