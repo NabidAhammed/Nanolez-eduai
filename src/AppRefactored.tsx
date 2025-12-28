@@ -34,7 +34,7 @@ import { ViewType } from './types';
 
 export default function AppRefactored() {
   // Authentication state
-  const { userSession, loading: authLoading, login, logout, getCurrentUserEmail, isAuthenticated } = useAuth();
+  const { userSession, loading: authLoading, error: authError, login, logout, getCurrentUserEmail, isAuthenticated } = useAuth();
   const currentUserEmail = getCurrentUserEmail();
 
   // User-specific data management
