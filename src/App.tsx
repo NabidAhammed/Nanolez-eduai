@@ -1,11 +1,4 @@
 import React, { useState, useEffect } from 'react';
-
-// ============================================================================
-// CONFIGURATION
-// ============================================================================
-const GROQ_API_KEY = "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"; 
-const GROQ_MODEL = "llama-3.3-70b-versatile";
-
 import { 
   BookOpen, Calendar, CheckCircle2, ChevronRight, Layout, 
   Map, Plus, Loader2, Sparkles, Zap, Globe, Trash2, 
@@ -18,26 +11,29 @@ const SUPPORTED_LANGUAGES = ["English", "Spanish", "French", "German", "Hindi", 
 /**
  * GROQ API Logic
  */
-async function callGroq(messages: any[], jsonMode: boolean = false) {
+async function callGroqFunction(userId: string, action: string, data: any) {
   let delay = 1000;
   for (let i = 0; i < 5; i++) {
     try {
-      const response = await fetch(`https://api.groq.com/openai/v1/chat/completions`, {
+      const response = await fetch('/.netlify/functions/groq', {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${GROQ_API_KEY}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: GROQ_MODEL,
-          messages: messages,
-          response_format: jsonMode ? { type: "json_object" } : undefined,
-          temperature: 0.7
+          userId,
+          action,
+          data
         })
       });
-      if (!response.ok) throw new Error('Groq API Error');
-      const data = await response.json();
-      return data.choices[0].message.content;
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Function call failed');
+      }
+      
+      const result = await response.json();
+      return result.result;
     } catch (e) {
       if (i === 4) throw e;
       await new Promise(r => setTimeout(r, delay));
@@ -46,17 +42,22 @@ async function callGroq(messages: any[], jsonMode: boolean = false) {
   }
 }
 
-async function generateRoadmap(goal: string, duration: string, level: string, language: string) {
-  const prompt = `Generate a 7-day-per-week learning roadmap for: "${goal}". Level: ${level}. Duration: ${duration}. Lang: ${language}.
-  JSON structure: { "title": string, "months": [{ "name": string, "overview": string, "weeks": [{ "name": string, "weeklyGoal": string, "days": [{ "day": number, "topic": string, "task": string }] }] }] }`;
-  const response = await callGroq([{ role: "system", content: "Valid JSON only. Write in " + language + ". 7 days/week required." }, { role: "user", content: prompt }], true);
-  return JSON.parse(response);
+async function generateRoadmap(goal: string, duration: string, level: string, language: string, userId: string) {
+  const result = await callGroqFunction(userId, 'generateRoadmap', {
+    goal,
+    duration,
+    level,
+    language
+  });
+  return result;
 }
 
-async function generateArticle(topic: string, language: string) {
-  const prompt = `Deep article on "${topic}". Write in ${language}. JSON: { "title": string, "summary": string, "sections": [{ "heading": string, "content": string }], "externalResource": { "title": string, "uri": string } }`;
-  const response = await callGroq([{ role: "system", content: "Valid JSON only. Write in " + language }, { role: "user", content: prompt }], true);
-  return JSON.parse(response);
+async function generateArticle(topic: string, language: string, userId: string) {
+  const result = await callGroqFunction(userId, 'generateArticle', {
+    topic,
+    language
+  });
+  return result;
 }
 
 // ============================================================================
@@ -74,10 +75,71 @@ export default function App() {
   const [appLanguage, setAppLanguage] = useState("English");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [userId] = useState(() => {
+    const saved = localStorage.getItem('nano-user-id');
+    if (saved) return saved;
+    const newId = crypto.randomUUID();
+    localStorage.setItem('nano-user-id', newId);
+    return newId;
+  });
 
+  // Function to normalize roadmap data and ensure all tasks have proper structure
+  const normalizeRoadmap = (roadmap: any) => {
+    if (!roadmap.months) return roadmap;
+    
+    return {
+      ...roadmap,
+      months: roadmap.months.map((month: any) => ({
+        ...month,
+        weeks: month.weeks.map((week: any) => ({
+          ...week,
+          days: week.days.map((day: any) => ({
+            ...day,
+            completed: day.completed || false, // Ensure completed is boolean
+            articleId: day.articleId || null   // Ensure articleId exists
+          }))
+        }))
+      }))
+    };
+  };
+
+  // Load data from localStorage on component mount
   useEffect(() => {
-    const saved = localStorage.getItem('nano-theme') as any;
-    if (saved) setTheme(saved);
+    const savedTheme = localStorage.getItem('nano-theme');
+    if (savedTheme) setTheme(savedTheme as 'light' | 'dark');
+
+    const savedLanguage = localStorage.getItem('nano-language');
+    if (savedLanguage) setAppLanguage(savedLanguage);
+
+    const savedRoadmaps = localStorage.getItem('nano-roadmaps');
+    if (savedRoadmaps) {
+      try {
+        const parsedRoadmaps = JSON.parse(savedRoadmaps);
+        // Normalize all loaded roadmaps to ensure proper structure
+        const normalizedRoadmaps: Record<string, any> = {};
+        Object.keys(parsedRoadmaps).forEach(id => {
+          normalizedRoadmaps[id] = normalizeRoadmap(parsedRoadmaps[id]);
+        });
+        setRoadmaps(normalizedRoadmaps);
+      } catch (e) {
+        console.error('Failed to parse saved roadmaps:', e);
+      }
+    }
+
+    const savedArticles = localStorage.getItem('nano-articles');
+    if (savedArticles) {
+      try {
+        setArticles(JSON.parse(savedArticles));
+      } catch (e) {
+        console.error('Failed to parse saved articles:', e);
+      }
+    }
+
+    const savedSelectedRoadmapId = localStorage.getItem('nano-selected-roadmap-id');
+    if (savedSelectedRoadmapId) setSelectedRoadmapId(savedSelectedRoadmapId);
+
+    const savedSelectedArticleId = localStorage.getItem('nano-selected-article-id');
+    if (savedSelectedArticleId) setSelectedArticleId(savedSelectedArticleId);
   }, []);
 
   const toggleTheme = () => {
@@ -86,14 +148,64 @@ export default function App() {
     localStorage.setItem('nano-theme', next);
   };
 
+  // Save data to localStorage whenever state changes
+  useEffect(() => {
+    localStorage.setItem('nano-roadmaps', JSON.stringify(roadmaps));
+  }, [roadmaps]);
+
+  useEffect(() => {
+    localStorage.setItem('nano-articles', JSON.stringify(articles));
+  }, [articles]);
+
+  useEffect(() => {
+    if (selectedRoadmapId) {
+      localStorage.setItem('nano-selected-roadmap-id', selectedRoadmapId);
+    } else {
+      localStorage.removeItem('nano-selected-roadmap-id');
+    }
+  }, [selectedRoadmapId]);
+
+  useEffect(() => {
+    if (selectedArticleId) {
+      localStorage.setItem('nano-selected-article-id', selectedArticleId);
+    } else {
+      localStorage.removeItem('nano-selected-article-id');
+    }
+  }, [selectedArticleId]);
+
+  useEffect(() => {
+    localStorage.setItem('nano-language', appLanguage);
+  }, [appLanguage]);
+
   const handleCreate = async (e: any) => {
     e.preventDefault();
     setLoading(true);
     const fd = new FormData(e.currentTarget);
     try {
-      const data = await generateRoadmap(fd.get('goal') as string, fd.get('duration') as string, fd.get('level') as string, appLanguage);
+      const data = await generateRoadmap(fd.get('goal') as string, fd.get('duration') as string, fd.get('level') as string, appLanguage, userId);
       const id = crypto.randomUUID();
-      setRoadmaps(prev => ({ ...prev, [id]: { ...data, id, progress: 0, goal: fd.get('goal'), language: appLanguage } }));
+      
+      // Initialize task completion states and add articleId placeholders
+      const initializedData = {
+        ...data,
+        id,
+        progress: 0,
+        goal: fd.get('goal'),
+        language: appLanguage,
+        months: data.months.map((month: any) => ({
+          ...month,
+          weeks: month.weeks.map((week: any) => ({
+            ...week,
+            days: week.days.map((day: any) => ({
+              ...day,
+              completed: false, // Initialize as not completed
+              articleId: null // Initialize with no article
+            }))
+          }))
+        }))
+      };
+      
+      setRoadmaps(prev => ({ ...prev, [id]: initializedData }));
       setSelectedRoadmapId(id);
       setActiveView('roadmap');
     } catch (err) { console.error(err); }
@@ -109,7 +221,7 @@ export default function App() {
   const handleGenArticle = async (m: number, w: number, d: number, topic: string) => {
     setGenId(`${m}-${w}-${d}`);
     try {
-      const data = await generateArticle(topic, roadmaps[selectedRoadmapId!].language);
+      const data = await generateArticle(topic, roadmaps[selectedRoadmapId!].language, userId);
       const id = crypto.randomUUID();
       setArticles(prev => ({ ...prev, [id]: { ...data, id } }));
       setRoadmaps(prev => {
@@ -195,7 +307,7 @@ export default function App() {
           <div className="max-w-5xl animate-in fade-in slide-in-from-bottom-4 duration-700">
             <div className="mb-12">
               <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.3em] mb-2 block">Personal Portal</span>
-              <h1 className="text-5xl lg:text-7xl font-black tracking-tighter mb-4 leading-none">NANOLEZ <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-fuchsia-500">EDU AI</span></h1>
+              <h1 className="text-5xl lg:text-7xl font-black tracking-tighter mb-4 leading-none space-x-1">NANOLEZ <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-fuchsia-500">EDU AI</span></h1>
               <p className={`${bodyColor} text-lg font-medium max-w-xl`}>Select an existing path or architect a new learning trajectory with neural guidance.</p>
             </div>
 
@@ -316,7 +428,7 @@ export default function App() {
                     {m.weeks.map((w: any, wIdx: number) => (
                       <div key={wIdx}>
                         <div className="flex items-center gap-4 mb-8">
-                           <div className="w-3 h-3 rounded-full bg-indigo-600 shadow-[0_0_10px_rgba(79,70,229,0.5)] -ml-[41px] lg:-ml-[57px] bg-white ring-4 ring-indigo-600" />
+                           <div className="w-3 h-3 rounded-full bg-indigo-600 shadow-[0_0_10px_rgba(79,70,229,0.5)] -ml-[41px] lg:-ml-[57px] ring-4 ring-white" />
                            <h4 className="text-xl font-black tracking-tight">{w.name} <span className="text-slate-400 mx-2">—</span> <span className="text-indigo-500">{w.weeklyGoal}</span></h4>
                         </div>
 
@@ -343,7 +455,7 @@ export default function App() {
                                   <BookOpen className="w-3.5 h-3.5" /> Study
                                 </button>
                               ) : (
-                                <button disabled={genId === `${mIdx}-${wIdx}-${dIdx}`} onClick={() => handleGenArticle(mIdx, wIdx, dIdx, d.topic)} className={`w-full py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${d.completed ? 'bg-white/20 text-white' : isDark ? 'bg-white/5 border border-white/10 hover:border-indigo-500' : 'bg-slate-100 text-slate-900'}`}>
+                                <button disabled={genId === `${mIdx}-${wIdx}-${dIdx}`} onClick={() => handleGenArticle(mIdx, wIdx, dIdx, d.topic)} className={`w-full py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${d.completed ? 'bg-white/20 text-white' : isDark ? 'bg-white/5 border border-white/10 hover:border-indigo-500' : 'bg-slate-100 text-slate-900 hover:bg-slate-200'}`}>
                                   {genId === `${mIdx}-${wIdx}-${dIdx}` ? <Loader2 className="animate-spin w-4 h-4" /> : <><Sparkles className="w-3.5 h-3.5" /> Core Lesson</>}
                                 </button>
                               )}
@@ -390,11 +502,48 @@ export default function App() {
               <div className={`p-10 rounded-[3rem] border-2 flex flex-col md:flex-row items-center justify-between gap-10 group ${isDark ? 'bg-indigo-600/5 border-indigo-500/20' : 'bg-indigo-50 border-indigo-100'}`}>
                 <div className="text-center md:text-left">
                   <div className="flex items-center justify-center md:justify-start gap-2 text-indigo-500 mb-2 font-black text-[10px] uppercase tracking-widest"><Globe className="w-4 h-4" /> Academic Resource</div>
-                  <h3 className="text-3xl font-black tracking-tight group-hover:text-indigo-600 transition-colors">{articles[selectedArticleId].externalResource?.title}</h3>
+                  <h3 className="text-3xl font-black tracking-tight group-hover:text-indigo-600 transition-colors">{articles[selectedArticleId].externalResource?.title || 'External Resource'}</h3>
                 </div>
-                <a href={articles[selectedArticleId].externalResource?.uri} target="_blank" rel="noreferrer" className="w-full md:w-auto px-10 py-5 bg-indigo-600 text-white rounded-2xl font-black flex items-center justify-center gap-3 shadow-2xl shadow-indigo-600/30 hover:scale-105 transition-transform">
+                <button 
+                  onClick={() => {
+                    console.log('Article data:', articles[selectedArticleId]);
+                    console.log('External resource:', articles[selectedArticleId].externalResource);
+                    
+                    const externalResource = articles[selectedArticleId].externalResource;
+                    // Check URL field first (as per groq function specification), then fallbacks
+                    let url = externalResource?.url || externalResource?.uri || externalResource?.link || externalResource?.href || externalResource?.source;
+                    
+                    if (url && url.trim()) {
+                      try {
+                        // Ensure URL has protocol
+                        let formattedUrl = url.trim();
+                        if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
+                          formattedUrl = 'https://' + formattedUrl;
+                        }
+                        console.log('Opening URL:', formattedUrl);
+                        window.open(formattedUrl, '_blank', 'noopener,noreferrer');
+                      } catch (error) {
+                        console.error('Error opening external resource:', error);
+                        alert('Unable to open the external resource. Please try copying the URL manually: ' + url);
+                      }
+                    } else {
+                      alert('External resource URL is not available or empty.\n\nDebug Info:\n' + JSON.stringify(externalResource, null, 2) + '\n\nAvailable fields: ' + Object.keys(externalResource || {}).join(', '));
+                    }
+                  }}
+                  className="w-full md:w-auto px-10 py-5 bg-indigo-600 text-white rounded-2xl font-black flex items-center justify-center gap-3 shadow-2xl shadow-indigo-600/30 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                >
                   Explore <ExternalLink className="w-5 h-5" />
-                </a>
+                </button>
+              </div>
+            )}
+            
+            {(!articles[selectedArticleId].externalResource || !articles[selectedArticleId].externalResource?.title) && (
+              <div className={`p-10 rounded-[3rem] border-2 flex flex-col items-center justify-center text-center gap-4 ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                <Globe className="w-8 h-8 text-slate-400" />
+                <div>
+                  <h3 className="text-xl font-black text-slate-500 mb-2">No External Resource</h3>
+                  <p className="text-sm text-slate-400">This article doesn't include an external academic resource.</p>
+                </div>
               </div>
             )}
           </div>
