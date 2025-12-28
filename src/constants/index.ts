@@ -26,7 +26,7 @@ export const LOCAL_STORAGE_KEYS = {
 } as const;
 
 export const API_ENDPOINTS = {
-  GROQ_FUNCTION: '/.netlify/functions/groq',
+  GROQ_FUNCTION: '/api/groq',
 } as const;
 
 export const THEME_STORAGE_KEY = LOCAL_STORAGE_KEYS.THEME;
