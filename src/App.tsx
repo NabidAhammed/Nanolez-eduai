@@ -5,60 +5,14 @@ import {
   Languages, Moon, Sun, ExternalLink, GraduationCap, ArrowRight,
   Command, Compass, Layers, Star
 } from 'lucide-react';
+import { generateRoadmap, generateArticle } from './utils/api';
 
 const SUPPORTED_LANGUAGES = ["English", "Spanish", "French", "German", "Hindi", "Bengali", "Japanese", "Chinese", "Arabic", "Portuguese"];
 
 /**
- * GROQ API Logic
+ * Using centralized API utilities from utils/api.ts
+ * This ensures consistency across all API calls
  */
-async function callGroqFunction(userId: string, action: string, data: any) {
-  let delay = 1000;
-  for (let i = 0; i < 5; i++) {
-    try {
-      const response = await fetch('/.netlify/functions/groq', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          userId,
-          action,
-          data
-        })
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Function call failed');
-      }
-      
-      const result = await response.json();
-      return result.result;
-    } catch (e) {
-      if (i === 4) throw e;
-      await new Promise(r => setTimeout(r, delay));
-      delay *= 2;
-    }
-  }
-}
-
-async function generateRoadmap(goal: string, duration: string, level: string, language: string, userId: string) {
-  const result = await callGroqFunction(userId, 'generateRoadmap', {
-    goal,
-    duration,
-    level,
-    language
-  });
-  return result;
-}
-
-async function generateArticle(topic: string, language: string, userId: string) {
-  const result = await callGroqFunction(userId, 'generateArticle', {
-    topic,
-    language
-  });
-  return result;
-}
 
 // ============================================================================
 // APP COMPONENT

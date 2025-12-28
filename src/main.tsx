@@ -4,6 +4,7 @@ import AppRefactored from './AppRefactored'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { storage } from './utils/storage'
 import './index.css'
+import App from './App'
 
 // Initialize storage before app starts
 storage.initialize();
@@ -25,7 +26,7 @@ try {
   ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
       <ErrorBoundary>
-        <AppRefactored />
+        <AppRefactored/>
       </ErrorBoundary>
     </React.StrictMode>
   );

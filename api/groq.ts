@@ -1,268 +1,381 @@
-const rateLimitMap = new Map<string, number>();
+// Vercel API function for Groq AI integration
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import crypto from 'crypto';
 
-function isRateLimited(userId: string, limitMs = 5000) {
-  const now = Date.now();
-  const last = rateLimitMap.get(userId) || 0;
-
-  if (now - last < limitMs) return true;
-
-  rateLimitMap.set(userId, now);
-  return false;
+// Ensure fetch is available (Node.js 18+)
+const globalAny = global as any;
+if (!globalAny.fetch) {
+  try {
+    globalAny.fetch = require('node-fetch');
+  } catch (error) {
+    console.warn('⚠️  node-fetch not available, using fallback');
+    // Simple fetch fallback for older environments
+    globalAny.fetch = async function(url: string, options: any) {
+      throw new Error('Fetch not available - please use Node.js 18+ or install node-fetch');
+    };
+  }
 }
 
-function generateMockRoadmap(goal: string, duration: string, level: string, language: string) {
-  console.log('🔧 Generating mock roadmap for:', goal);
-  return {
-    title: `Learning Plan: ${goal}`,
-    months: [
-      {
-        name: "Month 1: Foundation",
-        overview: `Start your journey to master ${goal} at ${level} level.`,
-        weeks: [
-          {
-            name: "Week 1: Introduction",
-            weeklyGoal: `Get familiar with basic concepts of ${goal}`,
-            days: [
-              { day: 1, topic: "Getting Started", task: `Read introduction to ${goal}`, completed: false },
-              { day: 2, topic: "Basic Concepts", task: "Study fundamental principles", completed: false },
-              { day: 3, topic: "Tools & Setup", task: "Set up development environment", completed: false },
-              { day: 4, topic: "First Steps", task: "Complete your first exercise", completed: false },
-              { day: 5, topic: "Practice", task: "Practice basic exercises", completed: false },
-              { day: 6, topic: "Review", task: "Review what you've learned", completed: false },
-              { day: 7, topic: "Assessment", task: "Take a progress quiz", completed: false }
-            ]
-          },
-          {
-            name: "Week 2: Core Concepts",
-            weeklyGoal: "Master the essential concepts",
-            days: [
-              { day: 8, topic: "Advanced Basics", task: "Deep dive into core concepts", completed: false },
-              { day: 9, topic: "Problem Solving", task: "Practice problem-solving techniques", completed: false },
-              { day: 10, topic: "Implementation", task: "Start implementing solutions", completed: false },
-              { day: 11, topic: "Testing", task: "Learn testing methodologies", completed: false },
-              { day: 12, topic: "Debugging", task: "Practice debugging skills", completed: false },
-              { day: 13, topic: "Optimization", task: "Learn to optimize your work", completed: false },
-              { day: 14, topic: "Weekly Review", task: "Comprehensive review", completed: false }
-            ]
-          }
-        ]
-      }
-    ]
-  };
-}
-
-function generateMockArticle(topic: string, language: string) {
-  console.log('🔧 Generating mock article for:', topic);
-  return {
-    title: `Understanding ${topic}: A Comprehensive Guide`,
-    summary: `This article provides a comprehensive overview of ${topic}, covering key concepts, practical applications, and best practices.`,
-    sections: [
-      {
-        heading: "Introduction to " + topic,
-        content: `${topic} is a fundamental concept that plays a crucial role in modern applications. Understanding its core principles is essential for anyone looking to master this field.`
-      },
-      {
-        heading: "Key Concepts",
-        content: `The key concepts of ${topic} include understanding the basic principles, implementing best practices, and applying the knowledge in practical scenarios.`
-      },
-      {
-        heading: "Practical Applications",
-        content: `In real-world scenarios, ${topic} can be applied to solve various problems and improve efficiency. Here are some practical examples...`
-      }
-    ],
-    externalResource: {
-      title: `Learn more about ${topic}`,
-      url: `https://example.com/${topic.toLowerCase().replace(/\s+/g, '-')}`
+// Generate a UUID that's compatible across environments
+function generateUUID(): string {
+  try {
+    if (crypto && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
     }
-  };
+  } catch (e) {
+    // Fallback to manual UUID generation
+  }
+  
+  // Fallback UUID generation
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }
 
-async function callGroqAPI(messages: any[], jsonMode: boolean = false) {
-  const apiKey = process.env.GROQ_API_KEY;
-  
-  if (!apiKey) {
-    console.warn('⚠️ GROQ_API_KEY not found in environment variables');
-    throw new Error('API key not configured');
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Enable CORS
+  res.setHeader('Access-Control-Allow-Credentials', "true");
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
   }
 
-  const requestBody: any = {
-    model: "llama-3.3-70b-versatile",
-    messages: messages,
-    temperature: jsonMode ? 0.7 : 0.6,
-  };
-
-  if (jsonMode) {
-    requestBody.response_format = { type: "json_object" };
-  }
-
-  console.log('📡 Calling Groq API...');
-  
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(requestBody),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('❌ Groq API error:', response.status, response.statusText, errorText);
-    throw new Error(`Groq API failed: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content) throw new Error("Empty response from Groq");
-
-  console.log('✅ Groq API response received');
-  return content;
-}
-
-export default async (req: Request) => {
-  const timestamp = new Date().toISOString();
-  console.log(`🚀 Groq API called at ${timestamp}`, {
-    method: req.method,
-    url: req.url,
-    headers: Object.fromEntries(req.headers.entries())
-  });
-
-  if (req.method !== "POST") {
-    return new Response(
-      JSON.stringify({ error: "Method Not Allowed" }),
-      { 
-        status: 405,
-        headers: { "Content-Type": "application/json" }
-      }
-    );
+  // Validate request method
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
   }
 
   try {
-    const requestBody = await req.json();
-    const { userId, action, data } = requestBody;
-
-    console.log('📝 Request details:', { userId, action, data });
-
-    if (!userId) {
-      return new Response(
-        JSON.stringify({ error: "User ID required" }),
-        { 
-          status: 400,
-          headers: { "Content-Type": "application/json" }
-        }
-      );
+    console.log('📡 API Request received:', { method: req.method, body: req.body });
+    
+    // Validate request body
+    if (!req.body) {
+      res.status(400).json({ error: 'Request body is required' });
+      return;
     }
 
-    if (isRateLimited(userId)) {
-      return new Response(
-        JSON.stringify({ error: "Too many requests" }),
-        { 
-          status: 429,
-          headers: { "Content-Type": "application/json" }
-        }
-      );
+    const { action, data, userId } = req.body;
+    
+    if (!action || !data) {
+      res.status(400).json({ error: 'Action and data are required' });
+      return;
     }
 
-    let result;
+    console.log(`🎯 Processing action: ${action} for user: ${userId || 'anonymous'}`);
 
-    try {
-      switch (action) {
-        case 'generateRoadmap': {
-          const { goal, duration, level, language } = data;
-          console.log('🗺️ Generating roadmap...', { goal, duration, level, language });
-          
-          const prompt = `Generate a 7-day-per-week learning roadmap for: "${goal}". Level: ${level}. Duration: ${duration}. Lang: ${language}.
-          JSON structure: { "title": string, "months": [{ "name": string, "overview": string, "weeks": [{ "name": string, "weeklyGoal": string, "days": [{ "day": number, "topic": string, "task": string, "completed": boolean }] }] }] }`;
-          
-          const messages = [
-            { role: "system", content: "Valid JSON only. Write in " + language + ". 7 days/week required. Include 'completed: false' for all days." },
-            { role: "user", content: prompt }
-          ];
-          
-          const response = await callGroqAPI(messages, true);
-          result = JSON.parse(response);
-          console.log('✅ Roadmap generated successfully');
-          break;
-        }
+    const groqApiKey = process.env.GROQ_API_KEY;
+    console.log('🔑 API Key status:', groqApiKey ? 'Available' : 'Not found');
 
-        case 'generateArticle': {
-          const { topic, language } = data;
-          console.log('📚 Generating article...', { topic, language });
-          
-          const prompt = `Deep article on "${topic}". Write in ${language}. JSON: { "title": string, "summary": string, "sections": [{ "heading": string, "content": string }], "externalResource": { "title": string, "url": string } }`;
-          
-          const messages = [
-            { role: "system", content: "Valid JSON only. Write in " + language },
-            { role: "user", content: prompt }
-          ];
-          
-          const response = await callGroqAPI(messages, true);
-          result = JSON.parse(response);
-          console.log('✅ Article generated successfully');
-          break;
-        }
-
-        case 'chat': {
-          const { messages } = data;
-          console.log('💬 Chat request...');
-          
-          const response = await callGroqAPI(messages, false);
-          result = { content: response };
-          console.log('✅ Chat response generated');
-          break;
-        }
-
-        default:
-          return new Response(
-            JSON.stringify({ error: "Invalid action" }),
-            { 
-              status: 400,
-              headers: { "Content-Type": "application/json" }
-            }
-          );
-      }
-    } catch (apiError) {
-      console.error('❌ API Error, falling back to mock data:', apiError);
+    // Check if API key is available
+    if (!groqApiKey) {
+      console.warn('⚠️  GROQ_API_KEY not found, using fallback responses');
       
-      // Fallback to mock data when API fails
       switch (action) {
-        case 'generateRoadmap': {
-          const { goal, duration, level, language } = data;
-          result = generateMockRoadmap(goal, duration, level, language);
+        case 'generateRoadmap':
+          const fallbackRoadmap = generateRoadmapFallback(data);
+          console.log('📋 Generated fallback roadmap');
+          res.status(200).json({ result: fallbackRoadmap });
           break;
-        }
-        case 'generateArticle': {
-          const { topic, language } = data;
-          result = generateMockArticle(topic, language);
+
+        case 'generateArticle':
+          const fallbackArticle = generateArticleFallback(data);
+          console.log('📖 Generated fallback article');
+          res.status(200).json({ result: fallbackArticle });
           break;
-        }
-        case 'chat': {
-          result = { content: "I'm sorry, I'm having trouble connecting to the AI service right now. Please try again later." };
-          break;
-        }
+
         default:
-          throw apiError;
+          res.status(400).json({ error: `Invalid action: ${action}` });
       }
+      return;
     }
 
-    return new Response(JSON.stringify({ result }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
+    switch (action) {
+      case 'generateRoadmap':
+        const roadmap = await generateRoadmapWithGroq(data, groqApiKey);
+        console.log('✅ Generated AI roadmap');
+        res.status(200).json({ result: roadmap });
+        break;
+
+      case 'generateArticle':
+        const article = await generateArticleWithGroq(data, groqApiKey);
+        console.log('✅ Generated AI article');
+        res.status(200).json({ result: article });
+        break;
+
+      default:
+        res.status(400).json({ error: `Invalid action: ${action}` });
+    }
+  } catch (error) {
+    console.error('💥 API Error:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      body: req.body
+    });
+    
+    // Always return a valid JSON response
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error occurred'
+    });
+  }
+}
+
+// Generate roadmap using Groq AI
+async function generateRoadmapWithGroq(data: any, apiKey: string) {
+  const { goal, duration, level, language } = data;
+  
+  const prompt = `Create a comprehensive learning roadmap for the following:
+  Goal: ${goal}
+  Duration: ${duration}
+  Level: ${level}
+  Language: ${language}
+
+Please respond with a JSON object containing exactly this structure:
+{
+  "title": "Descriptive title for this roadmap",
+  "months": [
+    {
+      "name": "Month name",
+      "overview": "Brief overview of this month's goals",
+      "weeks": [
+        {
+          "name": "Week name",
+          "weeklyGoal": "Primary goal for this week",
+          "days": [
+            {
+              "day": 1,
+              "topic": "Specific learning topic",
+              "task": "Detailed task description for practice"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+
+Create a realistic ${duration} roadmap with 4 weeks per month, 7 days per week. Make the content specific and educational.`;
+
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'mixtral-8x7b-32768',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert educational content creator. Always respond with valid JSON only, no additional text.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 4000,
+      }),
     });
 
-  } catch (err) {
-    console.error("💥 Groq function error:", err);
+    if (!response.ok) {
+      throw new Error(`Groq API error: ${response.status}`);
+    }
+
+    const result = await response.json();
+    const content = result.choices[0].message.content;
     
-    return new Response(
-      JSON.stringify({ 
-        error: err instanceof Error ? err.message : "AI generation failed",
-        timestamp: new Date().toISOString()
-      }),
-      { 
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      }
-    );
+    // Parse the JSON response
+    const roadmapData = JSON.parse(content);
+    
+    // Ensure required structure and add metadata
+    return {
+      id: generateUUID(),
+      title: roadmapData.title || `${goal} Learning Roadmap`,
+      goal: goal,
+      duration: duration,
+      level: level,
+      language: language,
+      progress: 0,
+      months: roadmapData.months || []
+    };
+  } catch (error) {
+    console.error('Groq API Error:', error);
+    // Fallback to template-based generation
+    return generateRoadmapFallback(data);
   }
-};
+}
+
+// Generate article using Groq AI
+async function generateArticleWithGroq(data: any, apiKey: string) {
+  const { topic, language } = data;
+  
+  const prompt = `Create a comprehensive educational article about: ${topic}
+Language: ${language}
+
+Please respond with a JSON object containing exactly this structure:
+{
+  "title": "Engaging article title",
+  "summary": "Brief summary of the article content",
+  "sections": [
+    {
+      "heading": "Section heading",
+      "content": "Detailed section content with explanations and examples"
+    }
+  ],
+  "externalResource": {
+    "title": "Helpful resource title",
+    "url": "https://example.com/resource",
+    "source": "Source name"
+  }
+}
+
+Create 3-4 substantial sections with detailed, educational content. Include practical examples and explanations.`;
+
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'mixtral-8x7b-32768',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert educational content creator. Always respond with valid JSON only, no additional text.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 4000,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Groq API error: ${response.status}`);
+    }
+
+    const result = await response.json();
+    const content = result.choices[0].message.content;
+    
+    // Parse the JSON response
+    const articleData = JSON.parse(content);
+    
+    // Ensure required structure and add metadata
+    return {
+      id: generateUUID(),
+      title: articleData.title || `${topic} - Comprehensive Guide`,
+      summary: articleData.summary || `A detailed guide covering ${topic} with practical examples.`,
+      sections: articleData.sections || [],
+      externalResource: articleData.externalResource || {
+        title: `Learn More About ${topic}`,
+        url: "https://www.khanacademy.org/",
+        source: "Khan Academy"
+      }
+    };
+  } catch (error) {
+    console.error('Groq API Error:', error);
+    // Fallback to template-based generation
+    return generateArticleFallback(data);
+  }
+}
+
+// Fallback roadmap generation (when API is unavailable)
+function generateRoadmapFallback(data: any) {
+  const { goal, duration, level, language } = data;
+  
+  const monthCount = duration === '1 Month' ? 1 : duration === '3 Months' ? 3 : 6;
+  const months = [];
+  
+  for (let m = 0; m < monthCount; m++) {
+    const monthName = `Month ${m + 1}: ${['Foundation', 'Intermediate', 'Advanced', 'Mastery', 'Specialization', 'Expert'][m] || 'Learning'}`;
+    const weeks = [];
+    
+    for (let w = 0; w < 4; w++) {
+      const weekName = `Week ${w + 1}`;
+      const weeklyGoal = `Build upon previous knowledge and develop ${level.toLowerCase()} skills`;
+      const days = [];
+      
+      for (let d = 0; d < 7; d++) {
+        days.push({
+          day: d + 1,
+          topic: `${goal} - Day ${d + 1}`,
+          task: `Complete hands-on practice and exercises for ${goal} concepts`,
+          completed: false,
+          articleId: null
+        });
+      }
+      
+      weeks.push({
+        name: weekName,
+        weeklyGoal: weeklyGoal,
+        days: days
+      });
+    }
+    
+    months.push({
+      name: monthName,
+      overview: `Develop ${level.toLowerCase()} understanding of ${goal}`,
+      weeks: weeks
+    });
+  }
+  
+  return {
+    id: generateUUID(),
+    title: `${goal} Learning Roadmap`,
+    goal: goal,
+    duration: duration,
+    level: level,
+    language: language,
+    progress: 0,
+    months: months
+  };
+}
+
+// Fallback article generation (when API is unavailable)
+function generateArticleFallback(data: any) {
+  const { topic, language } = data;
+  
+  return {
+    id: generateUUID(),
+    title: `${topic} - Comprehensive Guide`,
+    summary: `A detailed guide covering ${topic} with practical examples and best practices for ${language} learners.`,
+    sections: [
+      {
+        heading: `Introduction to ${topic}`,
+        content: `Welcome to this comprehensive guide on ${topic}. This article will provide you with a solid foundation and practical insights into the subject. We'll explore key concepts, best practices, and real-world applications to help you master ${topic}.`
+      },
+      {
+        heading: "Core Concepts and Fundamentals",
+        content: `Understanding the core concepts of ${topic} is essential for building a strong foundation. We'll break down complex ideas into digestible parts, providing clear explanations and practical examples that you can apply in your learning journey.`
+      },
+      {
+        heading: "Practical Applications and Examples",
+        content: `Theory is important, but practice makes perfect. In this section, we'll explore real-world applications of ${topic} with concrete examples and case studies that demonstrate how these concepts work in practice.`
+      },
+      {
+        heading: "Advanced Techniques and Best Practices",
+        content: `Once you have a grasp of the fundamentals, it's time to explore advanced techniques. We'll cover best practices, common pitfalls to avoid, and expert tips that will help you excel in ${topic}.`
+      }
+    ],
+    externalResource: {
+      title: `Learn More About ${topic}`,
+      url: "https://www.coursera.org/",
+      source: "Coursera - Online Courses"
+    }
+  };
+}
