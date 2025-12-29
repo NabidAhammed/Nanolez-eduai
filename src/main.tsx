@@ -26,7 +26,7 @@ try {
   ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
       <ErrorBoundary>
-        <AppRefactored/>
+        <App/>
       </ErrorBoundary>
     </React.StrictMode>
   );

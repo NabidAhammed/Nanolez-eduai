@@ -9,5 +9,10 @@ export default defineConfig({
     sourcemap: false,
     minify: 'terser',
   },
-  base: './',
+  assetsInclude: ['**/*.html'],
+  server: {
+    fs: {
+      strict: false,
+    },
+  },
 });

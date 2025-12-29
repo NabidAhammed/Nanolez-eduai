@@ -24,93 +24,13 @@ function generateUUID(): string {
   });
 }
 
-// Local development mock data generators
-function generateMockRoadmap(goal: string, duration: string, level: string, language: string): Roadmap {
-  console.log('🔧 Generating mock roadmap for local development:', goal);
-  return {
-    id: generateUUID(),
-    title: `Learning Plan: ${goal}`,
-    goal: goal,
-    duration: duration,
-    level: level,
-    language: language,
-    progress: 0,
-    months: [
-      {
-        name: "Month 1: Foundation",
-        overview: `Start your journey to master ${goal} at ${level} level.`,
-        weeks: [
-          {
-            name: "Week 1: Introduction",
-            weeklyGoal: `Get familiar with basic concepts of ${goal}`,
-            days: [
-              { day: 1, topic: "Getting Started", task: `Read introduction to ${goal}`, completed: false, articleId: null },
-              { day: 2, topic: "Basic Concepts", task: "Study fundamental principles", completed: false, articleId: null },
-              { day: 3, topic: "Tools & Setup", task: "Set up development environment", completed: false, articleId: null },
-              { day: 4, topic: "First Steps", task: "Complete your first exercise", completed: false, articleId: null },
-              { day: 5, topic: "Practice", task: "Practice basic exercises", completed: false, articleId: null },
-              { day: 6, topic: "Review", task: "Review what you've learned", completed: false, articleId: null },
-              { day: 7, topic: "Assessment", task: "Take a progress quiz", completed: false, articleId: null }
-            ]
-          },
-          {
-            name: "Week 2: Core Concepts",
-            weeklyGoal: "Master the essential concepts",
-            days: [
-              { day: 8, topic: "Advanced Basics", task: "Deep dive into core concepts", completed: false, articleId: null },
-              { day: 9, topic: "Problem Solving", task: "Practice problem-solving techniques", completed: false, articleId: null },
-              { day: 10, topic: "Implementation", task: "Start implementing solutions", completed: false, articleId: null },
-              { day: 11, topic: "Testing", task: "Learn testing methodologies", completed: false, articleId: null },
-              { day: 12, topic: "Debugging", task: "Practice debugging skills", completed: false, articleId: null },
-              { day: 13, topic: "Optimization", task: "Learn to optimize your work", completed: false, articleId: null },
-              { day: 14, topic: "Weekly Review", task: "Comprehensive review", completed: false, articleId: null }
-            ]
-          }
-        ]
-      }
-    ]
-  };
-}
 
-function generateMockArticle(topic: string, language: string): Article {
-  console.log('🔧 Generating mock article for local development:', topic);
-  return {
-    id: generateUUID(),
-    title: `Understanding ${topic}: A Comprehensive Guide`,
-    summary: `This article provides a comprehensive overview of ${topic}, covering key concepts, practical applications, and best practices.`,
-    sections: [
-      {
-        heading: "Introduction to " + topic,
-        content: `${topic} is a fundamental concept that plays a crucial role in modern applications. Understanding its core principles is essential for anyone looking to master this field.`
-      },
-      {
-        heading: "Key Concepts",
-        content: `The key concepts of ${topic} include understanding the basic principles, implementing best practices, and applying the knowledge in practical scenarios.`
-      },
-      {
-        heading: "Practical Applications",
-        content: `In real-world scenarios, ${topic} can be applied to solve various problems and improve efficiency. Here are some practical examples...`
-      }
-    ],
-    externalResource: {
-      title: `Learn more about ${topic}`,
-      url: `https://example.com/${topic.toLowerCase().replace(/\s+/g, '-')}`
-    }
-  };
-}
 
 async function callGroqFunction(userId: string, action: string, data: any): Promise<any> {
   let delay = 1000;
   const maxRetries = 2; // Further reduced retries for faster response
 
   console.log(`🚀 API Call: ${action} for user: ${userId}`, data);
-
-  // Check if we're in local development (localhost)
-  const isLocalDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  
-  if (isLocalDevelopment) {
-    console.log('🏠 Local development detected, will fallback to mock data');
-  }
 
   for (let i = 0; i < maxRetries; i++) {
     try {
@@ -150,29 +70,7 @@ async function callGroqFunction(userId: string, action: string, data: any): Prom
       console.error(`❌ Attempt ${i + 1} failed:`, e);
       
       if (i === maxRetries - 1) {
-        // On final attempt, check if we should fallback to mock data
-        if (isLocalDevelopment || e instanceof ApiError && (e.status === 404 || e.message.includes('Network error'))) {
-          console.log('🔧 Falling back to mock data due to API unavailability');
-          
-          // Fallback to mock data
-          switch (action) {
-            case 'generateRoadmap': {
-              const { goal, duration, level, language } = data;
-              return generateMockRoadmap(goal, duration, level, language);
-            }
-            case 'generateArticle': {
-              const { topic, language } = data;
-              return generateMockArticle(topic, language);
-            }
-            case 'chat': {
-              return { content: "I'm sorry, I'm having trouble connecting to the AI service right now. Please try again later." };
-            }
-            default:
-              throw new ApiError('Unknown action for mock fallback');
-          }
-        }
-        
-        // Throw with detailed error info
+        // On final attempt, throw the error
         if (e instanceof ApiError) {
           throw e;
         } else if (e instanceof TypeError && e.message.includes('fetch')) {
