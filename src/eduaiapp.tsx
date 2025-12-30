@@ -9,9 +9,8 @@ import {
   Sun, Moon, Trash2, AlertCircle,
   BookOpen, ListOrdered, Check, 
   Rocket, Compass, GraduationCap, Home, Library,
-  Youtube, Globe, Info,
-  BrainCircuit, Activity,
-  ShieldCheck, Users
+  Youtube, Globe, Info, Users,
+  ShieldCheck, BrainCircuit, Activity
 } from 'lucide-react';
 
 const LANGUAGES = [
@@ -35,6 +34,196 @@ const safeText = (val: any): string => {
   if (val === null || val === undefined) return '';
   if (typeof val === 'string') return val;
   return String(val);
+};
+
+// API Configuration
+const API_BASE_URL = 'api/'; // PHP backend is in api/ directory
+
+// TypeScript interfaces for API responses
+interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+interface RoadmapData {
+  id: string;
+  title: string;
+  months: Array<{
+    name: string;
+    weeks: Array<{
+      name: string;
+      goal: string;
+      days: Array<{
+        day: number;
+        topic: string;
+        task: string;
+      }>;
+    }>;
+  }>;
+  completedDays: string[];
+  lang: string;
+  intensity: string;
+  meta: {
+    goal: string;
+    duration: string;
+    studyTime: string;
+  };
+  created_at: string;
+}
+
+interface ArticleData {
+  title: string;
+  subtitle: string;
+  deepDive: string;
+  technicalConcepts: Array<{
+    term: string;
+    explanation: string;
+  }>;
+  steps: string[];
+  practiceLab: string;
+  resources: {
+    article: {
+      title: string;
+      url: string;
+      type: 'direct' | 'search' | 'verified';
+      status: 'valid' | 'invalid' | 'checking';
+      platform?: string;
+      confidence?: 'high' | 'medium' | 'low';
+    };
+    video: {
+      title: string;
+      url: string;
+      type: 'direct' | 'search' | 'verified';
+      status: 'valid' | 'invalid' | 'checking';
+      platform?: string;
+      confidence?: 'high' | 'medium' | 'low';
+    };
+  };
+  resourceValidation: {
+    articleStatus: string;
+    videoStatus: string;
+    validatedAt: string;
+    isFirstArticle: boolean;
+  };
+  dayId: string;
+  topic: string;
+  task: string;
+}
+
+interface UrlValidationResult {
+  valid: boolean;
+  confidence: number;
+  issues: string[];
+  isSecure: boolean;
+  isEducational: boolean;
+}
+
+// Enhanced API client with better error handling
+class ApiClient {
+  private static async request<T>(action: string, payload: any): Promise<T> {
+    try {
+      const response = await fetch(API_BASE_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action, ...payload })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
+      }
+
+      const data: ApiResponse<T> = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'API request failed');
+      }
+
+      if (!data.data) {
+        throw new Error('No data received from server');
+      }
+
+      return data.data;
+    } catch (error) {
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error('Network connection failed. Please check your internet connection and try again.');
+      }
+      throw error;
+    }
+  }
+
+  static async generateRoadmap(goal: string, intensity: string, duration: string, studyTime: string, language: string): Promise<RoadmapData> {
+    return this.request<RoadmapData>('generate_roadmap', {
+      goal,
+      intensity,
+      duration,
+      studyTime,
+      language
+    });
+  }
+
+  static async fetchArticle(topic: string, task: string, language: string, roadmapId: string, isFirstArticle: boolean): Promise<ArticleData> {
+    return this.request<ArticleData>('fetch_article', {
+      topic,
+      task,
+      language,
+      roadmapId,
+      isFirstArticle
+    });
+  }
+
+  static async validateUrl(url: string): Promise<UrlValidationResult> {
+    return this.request<UrlValidationResult>('validate_url', { url });
+  }
+}
+
+// Legacy function names for backward compatibility
+async function callGemini(prompt: string, systemPrompt: string, jsonMode: boolean = false, useSearch: boolean = false): Promise<string> {
+  // Since we now use PHP backend, we need to implement this differently
+  // For backward compatibility, we'll use the ApiClient to generate articles
+  
+  try {
+    // For backward compatibility, we'll use the ApiClient to fetch articles
+    // This function mimics the old callGemini behavior for any remaining references
+    const articleData = await ApiClient.fetchArticle(
+      prompt, // Using prompt as topic for backward compatibility
+      systemPrompt, // Using systemPrompt as task for backward compatibility
+      'en', // Default language
+      crypto.randomUUID(), // Generate a temporary roadmap ID
+      false // Not first article
+    );
+    
+    // Return the article data as JSON string for compatibility
+    return JSON.stringify(articleData);
+  } catch (error) {
+    // If API call fails, return a basic error response instead of throwing
+    return JSON.stringify({
+      error: 'API service temporarily unavailable',
+      message: 'Please try again later or use the ApiClient methods directly'
+    });
+  }
+}
+
+// Utility functions
+const createVerifiedSearchUrl = (topic: string, language: string = 'en'): string => {
+  const cleanTopic = topic.replace(/[^\w\s-]/g, '').trim();
+  const encodedTopic = encodeURIComponent(cleanTopic);
+  
+  // Create language-specific search URLs
+  const searchQueries = {
+    en: `${encodedTopic} tutorial guide`,
+    es: `${encodedTopic} tutorial guía`,
+    fr: `${encodedTopic} tutoriel guide`,
+    de: `${encodedTopic} tutorial anleitung`,
+    hi: `${encodedTopic} ट्यूटोरियल गाइड`,
+    bn: `${encodedTopic} টিউটোরিয়াল গাইড`,
+    ja: `${encodedTopic} チュートリアル ガイド`,
+    ar: `${encodedTopic} تعليمي دليل`
+  };
+
+  return `https://www.youtube.com/results?search_query=${searchQueries[language as keyof typeof searchQueries] || searchQueries.en}`;
 };
 
 // URL Validation and Resource Management
@@ -104,25 +293,6 @@ const validateUrl = async (url: string): Promise<ValidatedResource> => {
   }
 
   return validated;
-};
-
-const createVerifiedSearchUrl = (topic: string, language: string = 'en'): string => {
-  const cleanTopic = topic.replace(/[^\w\s-]/g, '').trim();
-  const encodedTopic = encodeURIComponent(cleanTopic);
-  
-  // Create language-specific search URLs
-  const searchQueries = {
-    en: `${encodedTopic} tutorial guide`,
-    es: `${encodedTopic} tutorial guía`,
-    fr: `${encodedTopic} tutoriel guide`,
-    de: `${encodedTopic} tutorial anleitung`,
-    hi: `${encodedTopic} ट्यूटोरियल गाइड`,
-    bn: `${encodedTopic} টিউটোরিয়াল গাইড`,
-    ja: `${encodedTopic} チュートリアル ガイド`,
-    ar: `${encodedTopic} تعليمي دليل`
-  };
-
-  return `https://www.youtube.com/results?search_query=${searchQueries[language as keyof typeof searchQueries] || searchQueries.en}`;
 };
 
 // Curated high-quality educational platforms with multiple fallback options
@@ -262,186 +432,6 @@ CRITICAL RESOURCE VALIDATION REQUIREMENTS:
 CRITICAL: Videos must be search URLs except first article. Test each URL mentally before including.`;
 };
 
-// Multi-model AI service with automatic fallback
-interface AIModel {
-  name: string;
-  provider: 'gemini' | 'groq' | 'mistral';
-  apiKey: string;
-  endpoint: string;
-  model: string;
-  headers: Record<string, string>;
-  formatPayload: (prompt: string, systemPrompt: string, jsonMode: boolean, useSearch: boolean) => any;
-  parseResponse: (response: any) => string;
-}
-
-const AI_MODELS: AIModel[] = [
-  {
-    name: 'Gemini 2.5 Flash',
-    provider: 'gemini',
-    apiKey: import.meta.env.VITE_GEMINI_API_KEY,
-    endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent',
-    model: 'gemini-2.5-flash-preview-09-2025',
-    headers: { 'Content-Type': 'application/json' },
-    formatPayload: (prompt: string, systemPrompt: string, jsonMode: boolean, useSearch: boolean) => ({
-      contents: [{ parts: [{ text: prompt }] }],
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      generationConfig: { 
-        responseMimeType: jsonMode ? "application/json" : "text/plain",
-        temperature: 0.7,
-      },
-      ...(useSearch ? { tools: [{ "google_search": {} }] } : {})
-    }),
-    parseResponse: (response: any) => response.candidates?.[0]?.content?.parts?.[0]?.text || ''
-  },
-  {
-    name: 'Groq Llama 3.1 70B',
-    provider: 'groq',
-    apiKey: import.meta.env.VITE_GROQ_API_KEY,
-    endpoint: 'https://api.groq.com/openai/v1/chat/completions',
-    model: 'llama-3.1-70b-versatile',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${import.meta.env.VITE_GROQ_API_KEY}` },
-    formatPayload: (prompt: string, systemPrompt: string, jsonMode: boolean) => ({
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: prompt }
-      ],
-      model: 'llama-3.1-70b-versatile',
-      temperature: 0.7,
-      max_tokens: jsonMode ? 4000 : 2000,
-      response_format: jsonMode ? { type: 'json_object' } : undefined
-    }),
-    parseResponse: (response: any) => response.choices?.[0]?.message?.content || ''
-  },
-  {
-    name: 'Groq Llama 3.1 8B',
-    provider: 'groq',
-    apiKey: import.meta.env.VITE_GROQ_API_KEY,
-    endpoint: 'https://api.groq.com/openai/v1/chat/completions',
-    model: 'llama-3.1-8b-instant',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${import.meta.env.VITE_GROQ_API_KEY}` },
-    formatPayload: (prompt: string, systemPrompt: string, jsonMode: boolean) => ({
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: prompt }
-      ],
-      model: 'llama-3.1-8b-instant',
-      temperature: 0.7,
-      max_tokens: jsonMode ? 4000 : 2000,
-      response_format: jsonMode ? { type: 'json_object' } : undefined
-    }),
-    parseResponse: (response: any) => response.choices?.[0]?.message?.content || ''
-  },
-  {
-    name: 'Groq 3.2 3b',
-    provider: 'groq',
-    apiKey: import.meta.env.VITE_GROQ_API_KEY,
-    endpoint: 'https://api.groq.com/openai/v1/chat/completions',
-    model: 'llama-3.2-3b-instant',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${import.meta.env.VITE_GROQ_API_KEY}` },
-    formatPayload: (prompt: string, systemPrompt: string, jsonMode: boolean) => ({
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: prompt }
-      ],
-      model: 'mixtral-8x7b-32768',
-      temperature: 0.7,
-      max_tokens: jsonMode ? 4000 : 2000,
-      response_format: jsonMode ? { type: 'json_object' } : undefined
-    }),
-    parseResponse: (response: any) => response.choices?.[0]?.message?.content || ''
-  },
-  {
-    name: 'Mistral small Latest',
-    provider: 'mistral',
-    apiKey: import.meta.env.VITE_MISTRAL_API_KEY,
-    endpoint: 'https://api.mistral.ai/v1/chat/completions',
-    model: 'mistral-small-latest',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${import.meta.env.VITE_MISTRAL_API_KEY}` },
-    formatPayload: (prompt: string, systemPrompt: string, jsonMode: boolean) => ({
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: prompt }
-      ],
-      model: 'mistral-large-latest',
-      temperature: 0.7,
-      max_tokens: jsonMode ? 8000 : 4000,
-      response_format: jsonMode ? { type: 'json_object' } : undefined
-    }),
-    parseResponse: (response: any) => response.choices?.[0]?.message?.content || ''
-  }
-];
-
-async function callAIModel(
-  prompt: string, 
-  systemPrompt: string, 
-  jsonMode: boolean = false, 
-  useSearch: boolean = false,
-  modelsToTry: AIModel[] = AI_MODELS
-): Promise<string> {
-  const maxRetriesPerModel = 1;
-  const delays = [500, 1000, 2000];
-
-  // Try each model in sequence
-  for (const model of modelsToTry) {
-    // Skip models without API keys
-    if (!model.apiKey) {
-      console.warn(`Skipping ${model.name}: No API key configured`);
-      continue;
-    }
-
-    console.log(`Trying ${model.name}...`);
-    
-    for (let attempt = 0; attempt < maxRetriesPerModel; attempt++) {
-      try {
-        const payload = model.formatPayload(prompt, systemPrompt, jsonMode, useSearch);
-        
-        const response = await fetch(`${model.endpoint}?key=${model.apiKey}`, {
-          method: 'POST',
-          headers: model.headers,
-          body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-          if (response.status === 429 || response.status >= 500) {
-            // Rate limit or server error, wait and retry
-            if (attempt < maxRetriesPerModel - 1) {
-              await new Promise(r => setTimeout(r, delays[attempt]));
-              continue;
-            }
-          }
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const result = await response.json();
-        const text = model.parseResponse(result);
-        
-        if (!text || text.trim().length === 0) {
-          throw new Error('Empty response from AI model');
-        }
-
-        console.log(`Success with ${model.name}`);
-        return text;
-
-      } catch (error) {
-        console.warn(`${model.name} attempt ${attempt + 1} failed:`, error);
-        
-        if (attempt < maxRetriesPerModel - 1) {
-          await new Promise(r => setTimeout(r, delays[attempt]));
-        } else {
-          // Last attempt for this model failed, try next model
-          console.warn(`${model.name} completely failed, trying next model...`);
-          break;
-        }
-      }
-    }
-  }
-
-  // If we get here, all models failed
-  throw new Error('All AI models failed to respond. Please check your API keys and try again.');
-}
-
-
-
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [roadmaps, setRoadmaps] = useState(() => {
@@ -460,43 +450,6 @@ export default function App() {
   const [activeRoadmap, setActiveRoadmap] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [loadingArticle, setLoadingArticle] = useState<string | null>(null);
-  
-  // Roadmap creation progress tracking
-  const [roadmapProgress, setRoadmapProgress] = useState<{
-    stage: 'idle' | 'analyzing' | 'consulting' | 'building' | 'structuring' | 'finalizing' | 'complete';
-    message: string;
-    percentage: number;
-    currentModel?: string;
-  }>({
-    stage: 'idle',
-    message: '',
-    percentage: 0
-  });
-
-  // Progress stages configuration
-  const PROGRESS_STAGES = [
-    { stage: 'analyzing', message: 'Analyzing your learning goals...', percentage: 10, duration: 500 },
-    { stage: 'consulting', message: 'Consulting AI education architects...', percentage: 25, duration: 800 },
-    { stage: 'building', message: 'Building personalized learning path...', percentage: 40, duration: 600 },
-    { stage: 'structuring', message: 'Structuring monthly, weekly, and daily goals...', percentage: 60, duration: 700 },
-    { stage: 'finalizing', message: 'Finalizing your roadmap...', percentage: 80, duration: 500 },
-    { stage: 'complete', message: 'Your roadmap is ready!', percentage: 100, duration: 300 }
-  ];
-
-  // Function to advance through progress stages
-  const advanceProgressStage = async (currentStageIndex: number, totalStages: number, modelName?: string) => {
-    if (currentStageIndex < PROGRESS_STAGES.length - 1) {
-      const nextStage = PROGRESS_STAGES[currentStageIndex + 1];
-      setRoadmapProgress({
-        stage: nextStage.stage as any,
-        message: nextStage.message,
-        percentage: nextStage.percentage,
-        currentModel: modelName
-      });
-      await new Promise(resolve => setTimeout(resolve, nextStage.duration));
-    }
-  };
-
   const [viewedArticle, setViewedArticle] = useState<any>(null);
   const [theme, setTheme] = useState('dark');
   const [userLang, setUserLang] = useState("English");
@@ -515,75 +468,15 @@ export default function App() {
     e.preventDefault();
     setLoading(true);
     setErrorMessage(null);
-    
-    // Initialize progress tracking
-    setRoadmapProgress({
-      stage: 'analyzing',
-      message: 'Analyzing your learning goals...',
-      percentage: 10,
-      currentModel: undefined
-    });
-    
     const fd = new FormData(e.currentTarget);
     const goal = fd.get('goal') as string;
     const duration = fd.get('duration') as string;
     const studyTime = fd.get('studyTime') as string;
     
-    const systemPrompt = "You are a Pedagogical Architect and a academician researcher. Create concise, hierarchical learning paths including every month, every week, and 7 days. OUTPUT JSON ONLY.";
-    const prompt = `Generate a learning path for: "${goal}". Level: ${intensity}. Duration: ${duration} month(s). Study: ${studyTime}h/day. Language: ${userLang}. 
-    JSON Schema: { "title": "string", "months": [{ "name": "string", "weeks": [{ "name": "string", "goal": "string", "days": [{ "day": number, "topic": "string", "task": "string" }] }] }] }`;
-
     try {
-      // Simulate progress stages while waiting for AI response
-      setTimeout(() => {
-        setRoadmapProgress(prev => ({
-          ...prev,
-          stage: 'consulting',
-          message: 'Consulting AI education architects...',
-          percentage: 25
-        }));
-      }, PROGRESS_STAGES[0].duration);
-      
-      setTimeout(() => {
-        setRoadmapProgress(prev => ({
-          ...prev,
-          stage: 'building',
-          message: 'Building personalized learning path...',
-          percentage: 40
-        }));
-      }, PROGRESS_STAGES[0].duration + PROGRESS_STAGES[1].duration);
-      
-      setTimeout(() => {
-        setRoadmapProgress(prev => ({
-          ...prev,
-          stage: 'structuring',
-          message: 'Structuring monthly, weekly, and daily goals...',
-          percentage: 60
-        }));
-      }, PROGRESS_STAGES[0].duration + PROGRESS_STAGES[1].duration + PROGRESS_STAGES[2].duration);
-      
-      setTimeout(() => {
-        setRoadmapProgress(prev => ({
-          ...prev,
-          stage: 'finalizing',
-          message: 'Finalizing your roadmap...',
-          percentage: 80
-        }));
-      }, PROGRESS_STAGES[0].duration + PROGRESS_STAGES[1].duration + PROGRESS_STAGES[2].duration + PROGRESS_STAGES[3].duration);
-      
-      const result = await callAIModel(prompt, systemPrompt, true);
-      
-      // Update to complete stage
-      setRoadmapProgress(prev => ({
-        ...prev,
-        stage: 'complete',
-        message: 'Your roadmap is ready!',
-        percentage: 100
-      }));
-      
-      const data = JSON.parse(result || '{}');
+      const data = await ApiClient.generateRoadmap(goal, intensity, duration, studyTime, userLang);
       const newPath = { 
-        ...data, 
+        data, 
         id: crypto.randomUUID(), 
         completedDays: [], 
         lang: userLang,
@@ -593,23 +486,8 @@ export default function App() {
       setRoadmaps([newPath, ...roadmaps]);
       setActiveRoadmap(newPath);
       setActiveTab('viewer');
-      
-      // Reset progress after a brief delay
-      setTimeout(() => {
-        setRoadmapProgress({
-          stage: 'idle',
-          message: '',
-          percentage: 0
-        });
-      }, 1000);
-      
     } catch (err: any) {
       setErrorMessage("Blueprint initialization failed. Check your network or try a simpler topic.");
-      setRoadmapProgress({
-        stage: 'idle',
-        message: '',
-        percentage: 0
-      });
     } finally {
       setLoading(false);
     }
@@ -628,58 +506,26 @@ export default function App() {
     
     // Check if this is the first article being accessed
     const isFirstArticle = Object.keys(articles).length === 0;
-    
-    const sysPrompt = `You are an Expert Knowledge Miner and article writer. Your goal is to provide a  in depth lesson and the most high-value direct resources available.Keep in mind the language preference of the user is ${activeRoadmap.lang}.
-    
-    CRITICAL YOUTUBE LOGIC:
-    1. Search for high-value, specific video tutorials (watch for channels like freeCodeCamp, MIT, Fireship, or industry leaders).
-    2. If you find a direct, high-quality video URL, use it in the JSON.
-    3. If NO high-value direct video is available, provide a pre-formatted search query URL.
-    
-    MANDATORY JSON FORMAT: {
-      "title": "string keeping it concise and relevant",
-      "subtitle": "string brief engaging subtitle",
-      "deepDive": "In depth explanation of the day topic keeping the main objective in mind",
-      "technicalConcepts": [{"term": "name", "explanation": "desc"}],
-      "steps": ["step 1", "step 2"],
-      "practiceLab": "coding examples only if applicable, else brief description",
-      "resources": { 
-        "article": {"title": "Full Guide", "url": "string"}, 
-        "video": {"title": "Tutorial/Search", "url": "string"} 
-      }
-    }`;
 
     try {
-      const prompt = `Research and explain: "${day.topic}". context: ${day.task}. Language: ${activeRoadmap.lang}. 
-      RESOURCES TASK: 
-      - Find a direct, high-value YouTube video URL if this is the first article.
-      - If no specific high-value video is found OR this is not the first article, set resources.video.url to: https://www.youtube.com/results?search_query=[topic_in_${activeRoadmap.lang}]
-      - Find a high-value article/doc URL. If not found, use a search link.`;
+      // Use the ApiClient to fetch article data from the PHP backend
+      const data = await ApiClient.fetchArticle(
+        day.topic, 
+        day.task, 
+        activeRoadmap.lang, 
+        activeRoadmap.id, 
+        isFirstArticle
+      );
       
-      // Enhanced prompt with validation requirements
-      const enhancedPrompt = enhanceResourcePrompt(prompt, day.topic, activeRoadmap.lang, isFirstArticle);
-      
-      let result;
-      try {
-        result = await callAIModel(enhancedPrompt, sysPrompt, true, true);
-      } catch (searchError) {
-        result = await callAIModel(enhancedPrompt, sysPrompt, true, false);
-      }
-
-      if (!result) throw new Error("No data received");
-      
-      const data = JSON.parse(result);
-      
-      // Validate and enhance resources with fallback
-      const validatedResources = await validateAndEnhanceResources(data.resources, day.topic, activeRoadmap.lang, isFirstArticle);
+      // The PHP backend already provides enhanced resources with validation
+      // No need for additional resource validation since the backend handles it
       
       const articleData = { 
         ...data, 
         dayId,
-        resources: validatedResources,
         resourceValidation: {
-          articleStatus: validatedResources.article?.status || 'valid',
-          videoStatus: validatedResources.video?.status || 'valid',
+          articleStatus: data.resources?.article?.status || 'valid',
+          videoStatus: data.resources?.video?.status || 'valid',
           validatedAt: new Date().toISOString(),
           isFirstArticle: isFirstArticle
         }
@@ -688,6 +534,7 @@ export default function App() {
       setArticles((prev: any) => ({ ...prev, [dayId]: articleData }));
       setViewedArticle(articleData);
     } catch (err: any) {
+      console.error('Article fetch error:', err);
       setErrorMessage("Knowledge Nexus connection failed. Please try accessing the node again.");
     } finally {
       setLoadingArticle(null);
@@ -854,11 +701,9 @@ export default function App() {
             <span className={`text-[8px] uppercase font-black tracking-[0.3em] ${themeClasses.muted}`}>AI Learning Platform</span>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className={`p-2 rounded-full border ${themeClasses.card} transition-all`}>
-            {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-700" />}
-          </button>
-        </div>
+        <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className={`p-2 rounded-full border ${themeClasses.card} transition-all`}>
+          {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-700" />}
+        </button>
       </header>
 
       {errorMessage && (
@@ -928,95 +773,12 @@ export default function App() {
               <h2 className="text-4xl font-black uppercase italic tracking-tight">Initialization</h2>
             </div>
             <form onSubmit={generateNewRoadmap} className={`p-8 md:p-12 rounded-[2.5rem] border ${themeClasses.card} space-y-10 shadow-2xl shadow-indigo-500/5`}>
-              {/* Roadmap Creation Progress Meter */}
-              {loading && (
-                <div className="space-y-6 py-4 animate-in slide-in-from-top-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Loader2 className="w-6 h-6 text-indigo-600 animate-spin" />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600">Creating Your Roadmap</span>
-                    </div>
-                    <span className="text-xl font-black italic text-indigo-600">{roadmapProgress.percentage}%</span>
-                  </div>
-                  
-                  {/* Progress Bar */}
-                  <div className="relative">
-                    <div className={`h-3 ${theme === 'dark' ? 'bg-white/5' : 'bg-zinc-100'} rounded-full overflow-hidden`}>
-                      <div 
-                        className="h-full bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 rounded-full transition-all duration-500 ease-out"
-                        style={{ width: `${roadmapProgress.percentage}%` }}
-                      />
-                    </div>
-                    {/* Animated shine effect */}
-                    <div className="absolute inset-0 overflow-hidden rounded-full">
-                      <div 
-                        className="h-full w-full bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"
-                        style={{ width: `${roadmapProgress.percentage}%` }}
-                      />
-                    </div>
-                  </div>
-                  
-                  {/* Progress Message */}
-                  <div className="text-center space-y-2">
-                    <p className={`text-lg font-black italic uppercase tracking-tight ${theme === 'dark' ? 'text-white' : 'text-zinc-900'}`}>
-                      {roadmapProgress.message}
-                    </p>
-                    {roadmapProgress.currentModel && (
-                      <p className={`text-[10px] font-black uppercase tracking-widest ${themeClasses.muted}`}>
-                        Using: {roadmapProgress.currentModel}
-                      </p>
-                    )}
-                  </div>
-                  
-                  {/* Progress Stages Indicator */}
-                  <div className="flex items-center justify-between px-2">
-                    {['analyzing', 'consulting', 'building', 'structuring', 'finalizing', 'complete'].map((stage, index) => {
-                      const stageIndex = PROGRESS_STAGES.findIndex(s => s.stage === stage);
-                      const stagePercentage = stage === 'complete' ? 100 : PROGRESS_STAGES[stageIndex]?.percentage || 0;
-                      const isActive = roadmapProgress.percentage >= stagePercentage;
-                      const isCurrent = roadmapProgress.stage === stage;
-                      
-                      return (
-                        <div key={stage} className="flex flex-col items-center gap-2">
-                          <div className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                            isActive 
-                              ? 'bg-indigo-600 shadow-lg shadow-indigo-600/50' 
-                              : theme === 'dark' ? 'bg-white/10' : 'bg-zinc-200'
-                          }`} />
-                          <span className={`text-[6px] font-black uppercase tracking-wider ${
-                            isActive ? 'text-indigo-600' : themeClasses.muted
-                          }`}>
-                            {stage.charAt(0).toUpperCase() + stage.slice(1)}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  
-                  {/* Please be patient message */}
-                  <div className="flex items-center justify-center gap-2 pt-2">
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </div>
-                    <p className={`text-[9px] font-black uppercase tracking-widest ${themeClasses.muted}`}>
-                      Please keep patient, we are creating your roadmap learning path
-                    </p>
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '450ms' }} />
-                      <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '600ms' }} />
-                      <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '750ms' }} />
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div className={`space-y-3 transition-all duration-300 ${loading ? 'opacity-30 pointer-events-none' : ''}`}>
+              <div className="space-y-3">
                 <label className="text-[10px] font-black uppercase tracking-widest text-indigo-600 ml-1">What do you want to master?</label>
                 <input name="goal" required placeholder="e.g. Quantitative Finance or Quantum Computing" className={`w-full p-5 ${themeClasses.input} rounded-2xl text-lg font-bold outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all placeholder:opacity-30`} />
               </div>
 
-              <div className={`space-y-3 transition-all duration-300 ${loading ? 'opacity-30 pointer-events-none' : ''}`}>
+              <div className="space-y-3">
                 <label className="text-[10px] font-black uppercase tracking-widest text-indigo-600 ml-1">Training Intensity</label>
                 <div className="grid grid-cols-3 gap-4">
                   {INTENSITIES.map(lvl => (
@@ -1028,7 +790,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className={`grid grid-cols-2 gap-6 transition-all duration-300 ${loading ? 'opacity-30 pointer-events-none' : ''}`}>
+              <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-3">
                   <label className="text-[10px] font-black uppercase tracking-widest text-indigo-600 ml-1">Daily Commitment</label>
                   <select name="studyTime" className={`w-full p-5 ${themeClasses.input} rounded-2xl font-bold outline-none cursor-pointer hover:border-indigo-600 transition-all`}>
@@ -1047,7 +809,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className={`space-y-3 transition-all duration-300 ${loading ? 'opacity-30 pointer-events-none' : ''}`}>
+              <div className="space-y-3">
                 <label className="text-[10px] font-black uppercase tracking-widest text-indigo-600 ml-1">Language Output</label>
                 <div className="grid grid-cols-4 gap-2">
                   {LANGUAGES.map(lang => (
@@ -1056,7 +818,7 @@ export default function App() {
                 </div>
               </div>
 
-              <button disabled={loading} className="w-full py-6 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black text-xl flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xl shadow-indigo-600/20">
+              <button disabled={loading} className="w-full py-6 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black text-xl flex items-center justify-center gap-3 disabled:opacity-50 transition-all shadow-xl shadow-indigo-600/20">
                 {loading ? <Loader2 className="animate-spin" /> : <><Sparkles className="w-6 h-6"/> EXECUTE DEPLOYMENT</>}
               </button>
             </form>
@@ -1119,7 +881,7 @@ export default function App() {
                                 <p className={`text-[11px] font-bold leading-relaxed line-clamp-3 ${isDone ? 'text-white/80' : themeClasses.muted}`}>{day.task}</p>
                               </div>
                               <button onClick={() => fetchArticle(day)} className={`w-full py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg ${isDone ? 'bg-white/20 text-white hover:bg-white/30' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-600/20'}`}>
-                                {loadingArticle === dayId ? <Loader2 className="animate-spin w-4 h-4" /> : <><Rocket className="w-5 h-5" /> Access Data</>}
+                                {loadingArticle === dayId ? <Loader2 className="animate-spin w-4 h-4" /> : <><Rocket className="w-4 h-4" /> Access Data</>}
                               </button>
                             </div>
                           );
@@ -1380,7 +1142,7 @@ export default function App() {
                   </div>
                   <div className="space-y-4">
                     <h3 className="text-3xl font-black italic uppercase tracking-tight">Nabid Ahammed Limon</h3>
-                    <p className="text-lg font-bold text-indigo-600">Lead Developer & Founder of NanoLez Tech</p>
+                    <p className="text-lg font-bold text-indigo-600">Lead Developer & AI Architect</p>
                     <p className={`text-lg font-bold leading-relaxed ${themeClasses.muted} max-w-md mx-auto`}>
                       Visionary developer specializing in AI-powered educational technologies. Passionate about making quality education accessible through intelligent automation and multi-model AI systems.
                     </p>
@@ -1392,7 +1154,7 @@ export default function App() {
                     <Target className="w-16 h-16 text-white" />
                   </div>
                   <div className="space-y-4">
-                    <h3 className="text-3xl font-black italic uppercase tracking-tight">NanoLez Tech</h3>
+                    <h3 className="text-3xl font-black italic uppercase tracking-tight">NanoLez Devs</h3>
                     <p className="text-lg font-bold text-purple-600">Innovation in Education Technology</p>
                     <p className={`text-lg font-bold leading-relaxed ${themeClasses.muted} max-w-md mx-auto`}>
                       Cutting-edge development company focused on revolutionary educational tools powered by artificial intelligence. Transforming how people learn and acquire new skills worldwide.

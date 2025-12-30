@@ -1,33 +1,44 @@
-# API Fix Implementation TODO
+# TODO: Fix PHP Backend and API Integration Issues
 
-## Phase 1: Core API Fixes
-- [x] 1. Fix API endpoint consistency in App.tsx
-- [x] 2. Update Groq API function with real AI integration
-- [x] 3. Fix browser compatibility (crypto.randomUUID)
-- [x] 4. Improve error handling and fallbacks
+## Problem Analysis
+- Frontend making POST requests to `http://localhost:3000/api/` resulting in 500 Internal Server Error
+- PHP not installed on Windows system
+- Backend server not running
+- API URL configuration mismatch
 
-## Phase 2: Environment & Deployment
-- [x] 5. Add environment variable handling for Vercel
-- [x] 6. Update vercel.json if needed
-- [x] 7. Create deployment guide
+## Step-by-Step Fix Plan
 
-## Phase 3: Validation
-- [x] 8. Create comprehensive API testing script
-- [x] 9. Add testing commands to package.json
-- [x] 10. Document testing procedures in deployment guide
+### 1. Install PHP on Windows
+- [ ] Download and install PHP from php.net
+- [ ] Add PHP to system PATH
+- [ ] Verify PHP installation
 
-## Current Status: ✅ ALL TASKS COMPLETED
+### 2. Fix API Configuration
+- [ ] Update frontend API_BASE_URL to use relative path instead of absolute URL
+- [ ] Configure Vite to proxy API requests to PHP backend
+- [ ] Update CORS headers in PHP backend
 
-### Summary of Implementation:
-- ✅ Fixed API endpoint consistency in App.tsx
-- ✅ Updated Groq API function with real AI integration
-- ✅ Fixed browser compatibility (crypto.randomUUID fallback)
-- ✅ Enhanced error handling and fallback mechanisms
-- ✅ Added environment variable handling for Vercel
-- ✅ Verified vercel.json configuration
-- ✅ Created comprehensive deployment guide
-- ✅ Built API testing script with validation
-- ✅ Added testing commands to package.json
-- ✅ Documented all testing procedures
+### 3. Setup Backend Server
+- [ ] Start PHP built-in server on a different port (e.g., 8080)
+- [ ] Configure Vite proxy to forward /api requests to PHP server
+- [ ] Test backend connectivity
 
-### Ready for Deployment! 🚀
+### 4. Configure API Keys (Optional for testing)
+- [ ] Set up environment variables for API keys
+- [ ] Create fallback mock responses for testing without API keys
+
+### 5. Test and Verify
+- [ ] Test roadmap generation
+- [ ] Test article fetching
+- [ ] Verify all API endpoints work correctly
+
+### 6. Final Integration
+- [ ] Update documentation
+- [ ] Create startup scripts for easy development
+- [ ] Verify deployment configuration
+
+## Files to Modify
+- `src/eduaiapp.tsx` - Update API_BASE_URL
+- `vite.config.ts` - Add proxy configuration
+- `api/config.php` - Fix environment variable handling
+- Create startup scripts for development
